@@ -547,6 +547,45 @@ class process(sino_subclass):
         self._parent.meta.history['process.flat_field'] = 1
 
         self._parent.message('Flat field correction applied.')
+        
+    
+    def short_scan_weights(self, fan_angle):
+        '''
+        Apply parker weights correction.
+        '''
+        def _Parker_window(theta, gamma, fan):
+            weight = 0.0
+            if (0 <= theta < 2*(gamma+fan)):
+                weight = numpy.sin((numpy.pi/4)*(theta/(gamma+fan)))**2
+            elif (2*(gamma+fan) <= theta < numpy.pi + 2*gamma):
+                weight = 1.0
+            elif (numpy.pi + 2*gamma <= theta < numpy.pi + 2*fan):
+                weight = numpy.sin((numpy.pi/4)*((numpy.pi + 2*fan - theta)/(gamma+fan)))**2 
+            else:
+                weight = 0.0
+            return weight
+        
+        weights = numpy.zeros_like(self._parent.data._data, dtype=numpy.float32)
+        sdd = self._parent.meta.geometry['src2det']
+        for u in range(0,weights.shape[2]):
+            weights[:,:,u] = u
+            
+        weights = weights - weights.shape[2]/2
+        weights = self._parent.meta.geometry['det_pixel']*weights
+        weights = numpy.arctan(weights/sdd)
+        
+        theta = self._parent.meta.theta
+        for ang in range(0,theta.shape[0]):
+            tet = theta[ang]
+            for u in range(0, weights.shape[2]):
+                weights[:,ang,u] = _Parker_window(theta = tet, gamma = weights[0,ang,u], fan=fan_angle)
+        
+        self._parent.data._data *= weights
+        # add a record to the history: 
+        self._parent.meta.history['process.short_scan'] = 1
+
+        self._parent.message('Short scan correction applied.')
+        
 
     def log(self, upper_bound = numpy.log(256)):
         '''
@@ -802,7 +841,7 @@ class reconstruct(sino_subclass):
     def _backproject(self, y, algorithm = 'FDK_CUDA', iterations=1, min_constraint = None, short_scan=True):
         
       cfg = astra.astra_dict(algorithm)
-      cfg['option'] = {'ShortScan' : True}
+      #cfg['option'] = {'ShortScan' : True}
       if (min_constraint is not None):
           cfg['option']['MinConstraint'] = min_constraint
  
@@ -812,7 +851,7 @@ class reconstruct(sino_subclass):
           
       cfg['ReconstructionDataId'] = rec_id
       cfg['ProjectionDataId'] = sinogram_id
-      print(cfg['option'])
+      #print(cfg['option'])
       alg_id = astra.algorithm.create(cfg)
 
       print('sinogram shape: ', y.shape)

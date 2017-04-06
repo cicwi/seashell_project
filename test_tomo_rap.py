@@ -8,17 +8,17 @@ Created on Mon Feb 13 18:09:26 2017
 #%%
 import tomo_wrap as tw
 import os
-#import numpy
+import numpy
 
 
 #%% Initialize:
 sino = tw.sinogram()
 
 #%% Misc 1:
-sino.what_to_do()
+#sino.what_to_do()
 
 #%% Misc 2:
-print(sino.meta.history)
+#print(sino.meta.history)
 
 
 #%% Preprocess:
@@ -39,8 +39,8 @@ for offset in range(0,1):
     sino.io.read_raw(os.path.join(files_dir, 'Cropped'))
     #sino.io.read_ref(os.path.join(files_dir, '0um-100s-1.tif'))
     sino.io.read_meta(path=os.path.join(files_dir,'log'),kind='SkyScan')
-    
-    #sino.process.crop_centered((sino.meta.geometry['optical_axis'], sino.data.shape(2)//2),(3000,20))
+    #sino.meta.theta = -sino.meta.theta
+    #sino.process.crop_centered((sino.meta.geometry['optical_axis'], sino.data.shape(2)//2),(50,4000))
     
     #
     # For medipix, we acquire flat field 100 times longer than projections, normalization must be performed. 
@@ -68,15 +68,17 @@ for offset in range(0,1):
     sino.reconstruct._initialize_astra(sino.data.shape(), pixel_size, det2obj, src2obj, theta)
     vol = sino.reconstruct._backproject(sino.data._data, algorithm='BP3D_CUDA')
     volume = tw.volume(vol)'''
-    
-    volume = sino.reconstruct.SIRT(iterations=100)
+    #sino.process.short_scan_weights(3.0*numpy.pi/180.0)
+    #sino.io.save_tiff(os.path.join('results','Sino'),axis=0)
+    volume = sino.reconstruct.FDK()
+    #volume = sino.reconstruct.SIRT(iterations=100)
     #
     #%% Visualize:
     #    
     #volume.display.slice(100, 0)
     #sino.io.save_tiff(os.path.join(files_dir,'Cropped'),axis=1)
     
-    sino.io.save_tiff(os.path.join('results','Sino'),axis=0)
-    volume.io.save_tiff('results','SIRT')
+    
+    volume.io.save_tiff('results','FDK')
     
 
