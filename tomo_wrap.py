@@ -41,6 +41,7 @@ class sino_subclass(object):
 # **************************************************************   
 from stat import S_ISREG, ST_CTIME, ST_MODE
 import os
+import gc
 
 def sort_by_date(files):
     '''
@@ -121,7 +122,11 @@ class io(sino_subclass):
         This will look for files with numbers in the last 4 letters of their names. 
         '''
         path = update_path(path, self)
-            
+         
+        # Free memory:
+        self._parent.data._data = None
+        gc.collect()
+        
         # Try to find how many files do we need to read:
         
         # Get the files only:
@@ -229,7 +234,11 @@ class io(sino_subclass):
         
         # TODO: make the actual parser. For now just initialization with default
         #self._parent.meta.geometry['det_pixel'] = 28.0/self._parent.data.shape(0)
-        geometry['nb_angle'] = self._parent.data.shape(1)
+        if self._parent.data._data != []:
+            geometry['nb_angle'] = self._parent.data.shape(1)
+        else:
+            self._parent.error('Load the data first. We don`t know how many angles to use')
+            
         if kind is None:
             geometry['det_pixel'] = 0.00870
             geometry['src2obj'] = 58.670
@@ -324,13 +333,15 @@ class io(sino_subclass):
         if len(log_file) == 0:
             raise FileNotFoundError('Log file not found in path: ' + path)
         if len(log_file) > 1:
-            raise UserWarning('Found several log files. Currently using: ' + log_file)
+            #raise UserWarning('Found several log files. Currently using: ' + log_file[0])
+            self._parent.warning('Found several log files. Currently using: ' + log_file[0])
             log_file = os.path.join(path, log_file[0])
         else:
             log_file = os.path.join(path, log_file[0])
             
         #Once the file is found, parse it
         geometry = self._parent.meta.geometry
+        physics = self._parent.meta.physics
         with open(log_file, 'r') as logfile:
             for line in logfile:
                 name, var = line.partition("=")[::2]
@@ -351,13 +362,13 @@ class io(sino_subclass):
                     geometry['rot_step'] = float(var)*factor
                 elif (name[0:8] == "exposure"):
                     factor = self._parse_unit(name)
-                    geometry['exposure'] = float(var)*factor
+                    physics['exposure'] = float(var)*factor
                 elif (name[0:14] == "source voltage"):
                     factor = self._parse_unit(name)
-                    geometry['voltage'] = float(var)*factor
+                    physics['voltage'] = float(var)*factor
                 elif (name[0:14] == "source current"):
                     factor = self._parse_unit(name)
-                    geometry['current'] = float(var)*factor
+                    physics['current'] = float(var)*factor
                 
     
     def save_tiff(self, path = '', fname='data', axis=0):
@@ -548,16 +559,19 @@ class process(sino_subclass):
 
         self._parent.message('Flat field correction applied.')
 
-    def log(self, upper_bound = numpy.log(256)):
+    def log(self, air_intensity = 1, upper_bound = numpy.log(256)):
         '''
         Apply -log(x) to the sinogram
         '''
-        self._parent.data._data = -numpy.log(self._parent.data._data)
+        self._parent.data._data = -numpy.log(self._parent.data._data / air_intensity)
         
         # Apply a bound to large values:
-        self._parent.data._data[self._parent.data._data > upper_bound] = upper_bound
-        self._parent.data._data[~numpy.isfinite(self._parent.data._data)] = upper_bound
-                                
+        #self._parent.data._data[self._parent.data._data > upper_bound] = upper_bound
+        #self._parent.data._data[~numpy.isfinite(self._parent.data._data)] = upper_bound
+
+        self._parent.data._data = numpy.nan_to_num(self._parent.data._data)
+        numpy.clip(self._parent.data._data, a_min = -10, a_max = upper_bound, out = self._parent.data._data)
+                 
         self._parent.meta.history['process.log(upper_bound)'] = upper_bound                  
 
     def salt_pepper(self, kernel = 3):
@@ -598,7 +612,13 @@ class process(sino_subclass):
                     self._parent.warning("Center shift found an offset smaller than 1. Correction won't be applied")
                 
                 
-        
+    def bin_theta(self):
+        '''
+        Bin angles with a factor of two
+        '''
+        self._parent.data._data = (self._parent.data._data[:,0:-1:2,:] + self._parent.data._data[:,1::2,:]) / 2
+        self._parent.meta.theta = (self._parent.meta.theta[:,0:-1:2,:] + self._parent.meta.theta[:,1::2,:]) / 2                           
+
     def crop(self, top_left, bottom_right):
         '''
         Crop the sinogram
@@ -613,6 +633,9 @@ class process(sino_subclass):
         else:
             self._parent.data._data = self._parent.data._data[:, :, top_left[0]:]
 
+        self._parent.data._data = numpy.ascontiguousarray(self._parent.data._data, dtype=numpy.float32)
+        gc.collect()
+         
         self._parent.meta.history['process.ccrop(top_left, bottom_right)'] = [top_left, bottom_right]
                                   
         self._parent.message('Sinogram cropped.')
@@ -659,7 +682,6 @@ class reconstruct(sino_subclass):
         
         # Run the reconstruction:
         epsilon = numpy.pi / 180.0 # 1 degree
-        short_scan = numpy.abs(theta[-1] - 2*numpy.pi) > epsilon 
         vol = self._backproject(prnt.data._data, algorithm='FDK_CUDA', short_scan=short_scan)
             
         return volume(vol)
