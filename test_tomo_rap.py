@@ -8,64 +8,47 @@ Created on Mon Feb 13 18:09:26 2017
 #%%
 import tomo_wrap as tw
 import os
-import numpy
-import matplotlib.pyplot as plt
 
 #%% Initialize:
 sino = tw.sinogram()
 
-
-#%% Misc 1:
-#sino.what_to_do()
-
-#%% Misc 2:
-#print(sino.meta.history)
-
 #%% Read data:
     
-files_dir = '/export/scratch2/ci/data/naturalis/seashell/Projections/Hinf-AMT24-13-SU2-T1/'
-sino.io.read_raw(os.path.join(files_dir,'Hinf-AMT24-13-22-SU2-T1'))   
+##files_dir = '/export/scratch2/ci/data/naturalis/seashell/Projections/Hinf-AMT24-13-SU2-T1/'
+files_dir = '/export/scratch2/ci/data/naturalis/seashell/Projections/Hinf-AMT24-05-SU1/Hinf-AMT24-05-05LS-SU1/'
+sino.io.read_raw(os.path.join(files_dir,''))   
 
-sino.io.read_meta(os.path.join(files_dir,'log'),kind='SkyScan') 
+#data = sino.data._data.copy()
+#sino.data._data = data.copy()
+
+sino.io.read_meta(os.path.join(files_dir,''),kind='SkyScan')
 
 #%% Crop:
-sino.process.crop([1000, 1330],[1000, 1330])
+sino.process.crop([900, 1000], [900, 1000])
 sino.display.slice(1, dim_num = 1)
 
 # Find the air intensity:
 sino.analyse.histogram()
 
 #%% Prepro
-sino.process.log(air_intensity = 41800)
-
+sino.process.log(air_intensity = 44000)
 sino.display.slice(1, dim_num = 1)
-
+#%% Find the center of rotation:
+#sino.io.save_backup()
+#sino.process.center_shift()
+    
+#%% Movie through the sinogram:
+sino.display.slice_movie(1, 1)
+    
 #%% FDK reconstruction:  
+
 volume = sino.reconstruct.FDK()
-volume.display.slice(5, dim_num =0)
-#%%
-
-#%%
-#sino.process.center_shift(offset = 25)
-sino.display.slice(1, dim_num = 1)
-figure()
-plt.imshow(numpy.fliplr(sino.data._data[:, 720, :]))   
-#%%
-prnt = sino.reconstruct
-
-# Initialize ASTRA:            
-sz = sino.data.shape()
-pixel_size = sino.meta.geometry['det_pixel']
-det2obj = sino.meta.geometry['det2obj']
-src2obj = sino.meta.geometry['src2obj']
-theta = -sino.meta.theta
-        
-prnt._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
-        
-# Run the reconstruction:
-epsilon = numpy.pi / 180.0 # 1 degree
-short_scan = numpy.abs(theta[-1] - 2*numpy.pi) > epsilon 
-vol = prnt._backproject(sino.data._data, algorithm='FDK_CUDA', short_scan=short_scan)
-            
+volume.display.slice_movie(0, 1)    
+#%% Single slice reconstruction:
 plt.figure()
-plt.imshow(vol[5, :,:], cmap = 'gray')
+plt.imshow(sino.reconstruct.slice_FDK()[0,:])
+
+#%% Scan reconstruction:
+
+vol = sino.reconstruct.slice_scan(numpy.linspace(-3, 3, 21))
+vol.display.slice_movie(0, 1)

@@ -105,7 +105,18 @@ def update_path(path, io):
     if path == '':
         io._parent.error('Path to the file was not specified.')
         
-    return path      
+    return path    
+    
+def extract_2d_array(dimension, index, data):
+    '''
+    Extract a 2d array from 3d.
+    '''
+    if dimension == 0:
+        return data[index, :, :]
+    elif dimension == 1:
+        return data[:, index, :]
+    else:
+        return data[:, :, index]
 
 class io(sino_subclass):
     '''
@@ -150,7 +161,7 @@ class io(sino_subclass):
         filename = [x for x in os.listdir(path) if str(last) in x][0]
                     
         # Find the file with the minimum index:
-        filename = sorted([x for x in os.listdir(path) if filename[:-8] in x])[0]
+        filename = sorted([x for x in os.listdir(path) if (filename[:-8] in x)&(filename[-3:] in x)])[0]
         
         # If it's a tiff, use dxchange to read tiff:         
         if ((filename[-4:] == 'tiff') | (filename[-3:] == 'tif')):
@@ -163,7 +174,7 @@ class io(sino_subclass):
         else:
             
             print('Reading a stack of images')
-            
+            print('Seed file name is:', filename)
             #srt = self.settings['sort_by_date']AMT24-25-SU1/
 
             if self._parent:
@@ -180,7 +191,7 @@ class io(sino_subclass):
             
         # add record to the history:        
         self._parent.meta.history['io.read_raw'] = path
-    
+        
     def read_ref(self, path_file):
         '''
         Read reference flat field.
@@ -202,7 +213,6 @@ class io(sino_subclass):
 
         self._parent.message('Flat field reference image loaded.')
         
-
     def read_bh(self, path_file):
         '''
         Read reference foil data for signal to equivalent thickness calibration.
@@ -222,8 +232,7 @@ class io(sino_subclass):
         # add record to the history:        
         self._parent.meta.history['io.read_ref'] = path_file
 
-        self._parent.message('Beam hardening correction reference images loaded.')
-        
+        self._parent.message('Beam hardening correction reference images loaded.')       
         
     def read_meta(self, path = '', kind=None):
         '''
@@ -247,8 +256,9 @@ class io(sino_subclass):
         
         elif (str.lower(kind) == 'skyscan'):
             # Parse the SkyScan log file 
-            self._parse_skyscan_meta()
+            self._parse_skyscan_meta(path)
         
+        print(geometry)
         if (geometry['det2obj'] == 0.0):
             geometry['det2obj'] = geometry['src2det'] - geometry['src2obj']
         
@@ -259,7 +269,35 @@ class io(sino_subclass):
         self._parent.meta.history['io.read_meta'] = path
 
         self._parent.message('Meta data loaded.')
+     
+    def save_backup(self):
+        '''
+        Make a copy of data in memory, just in case.
+        '''
+        self._parent.data._backup = self._parent.data._data.copy()
         
+        # add record to the history: 
+        self._parent.meta.history['io.save_backup'] = 'backup saved'
+
+        self._parent.message('Backup saved.')
+    
+    def load_backup(self):
+        '''
+        Retrieve a copy of data from the backup.
+        '''
+        if self._parent.data._backup == []:
+            self._parent.error('No backup found in memory!')
+            
+        self._parent.data._data = self._parent.data._backup.copy()
+        
+        # Clean memory:
+        self._parent.data._backup = None
+        gc.collect()
+        
+        # add record to the history: 
+        self._parent.meta.history['io.load_backup'] = 'backup loaded'
+
+        self._parent.message('Backup loaded.')
         
     # **************************************************************
     # Parsers for metadata files
@@ -270,7 +308,9 @@ class io(sino_subclass):
             factor = 1.0
             if string[-1] == ')':
                 unit = string[string.rfind('(')+1:-1].lower()
-            
+            else:
+                return 1.0
+                
             # Metric units --> mm
             if unit == 'mm':
                 pass 
@@ -320,7 +360,7 @@ class io(sino_subclass):
                 factor = 1000000.0
 
             else:
-                raise UserWarning('Unknown unit: ' + unit + '. Skipping.')
+                self._parent.warning('Unknown unit: ' + unit + '. Skipping.')
 
             return factor
     
@@ -330,6 +370,7 @@ class io(sino_subclass):
         
         # Try to find the log file in the selected path
         log_file = [x for x in os.listdir(path) if (os.path.isfile(os.path.join(path, x)) and os.path.splitext(os.path.join(path, x))[1] == '.log')]
+
         if len(log_file) == 0:
             raise FileNotFoundError('Log file not found in path: ' + path)
         if len(log_file) > 1:
@@ -342,34 +383,22 @@ class io(sino_subclass):
         #Once the file is found, parse it
         geometry = self._parent.meta.geometry
         physics = self._parent.meta.physics
+        
+        # Create a dictionary of keywords (skyscan -> our geometry definition):
+        geom_dict = {'camera pixel size': 'det_pixel', 'image pixel size': 'img_pixel', 'object to source':'src2obj', 'camera to source':'src2det', 
+        'optical axis':'optical_axis', 'rotation step':'rot_step', 'exposure':'exposure', 'source voltage':'voltage', 'source current':'current'}    
+        
         with open(log_file, 'r') as logfile:
             for line in logfile:
                 name, var = line.partition("=")[::2]
                 name = name.strip().lower()
-                if (name[0:16] == "object to source"):
+                                
+                # If name contains one of the keys (names can contain other stuff like units):
+                geom_key = [geom_dict[key] for key in geom_dict.keys() if key in name]
+
+                if geom_key != []:
                     factor = self._parse_unit(name)
-                    geometry['src2obj'] = float(var)*factor
-                elif (name[0:17] == "camera pixel size"):
-                    factor = self._parse_unit(name)
-                    geometry['det_pixel'] = float(var)*factor
-                elif (name[0:16] == "camera to source"):
-                    factor = self._parse_unit(name)
-                    geometry['src2det'] = float(var)*factor
-                elif (name[0:12] == "optical axis"):
-                    geometry['optical_axis'] = int(var)
-                elif (name[0:13] == "rotation step"):
-                    factor = self._parse_unit(name)
-                    geometry['rot_step'] = float(var)*factor
-                elif (name[0:8] == "exposure"):
-                    factor = self._parse_unit(name)
-                    physics['exposure'] = float(var)*factor
-                elif (name[0:14] == "source voltage"):
-                    factor = self._parse_unit(name)
-                    physics['voltage'] = float(var)*factor
-                elif (name[0:14] == "source current"):
-                    factor = self._parse_unit(name)
-                    physics['current'] = float(var)*factor
-                
+                    geometry[geom_key[0]] = float(var)*factor
     
     def save_tiff(self, path = '', fname='data', axis=0):
         '''
@@ -399,25 +428,63 @@ class meta(sino_subclass):
 class display(sino_subclass):   
     '''
     This is a collection of display tools for the raw and reconstructed data
-    '''
+    '''  
     def __init__(self, parent = []):
         self._parent = parent
+        self._cmap = 'gray'
     
-    def slice(self, slice_num, dim_num, fig_num = []):
+    def _figure_maker_(self, fig_num):
         '''
-        Display a 2D slice of 3D volumel
+        Make a new figure or use old one.
         '''
         if fig_num:
             plt.figure(fig_num)
         else:
             plt.figure()
             
-        if dim_num == 0:
-            plt.imshow(self._parent.data.get_data()[slice_num, :, :])    
-        elif dim_num == 1:
-            plt.imshow(self._parent.data.get_data()[:, slice_num, :])    
-        else:
-            plt.imshow(self._parent.data.get_data()[:, :, slice_num])    
+    def slice(self, slice_num, dim_num, fig_num = []):
+        '''
+        Display a 2D slice of 3D volumel
+        '''
+        self._figure_maker_(fig_num)
+         
+        img = extract_2d_array(dim_num, slice_num, self._parent.data.get_data())            
+        plt.imshow(img, cmap = self._cmap)
+            
+    def slice_movie(self, dim_num, fig_num = []):
+        '''
+        Display a 2D slice of 3D volumel
+        '''
+        self._figure_maker_(fig_num)
+        
+        slice_num = 0
+        img = extract_2d_array(dim_num, slice_num, self._parent.data.get_data())            
+        fig = plt.imshow(img, cmap = self._cmap)
+        
+        for slice_num in range(1, self._parent.data.shape()[dim_num]):
+            img = extract_2d_array(dim_num, slice_num, self._parent.data.get_data())            
+            fig.set_data(img)
+            plt.show()
+            plt.title(slice_num)
+            plt.pause(0.0001)
+    
+    def max_projection(self, dim_num, fig_num = []):
+        '''
+        Get maximum projection image of the 3d data.
+        '''
+        self._figure_maker_(fig_num)
+        
+        img = self._parent.data._data.max(dim_num)
+        plt.imshow(img, cmap = self._cmap)
+        
+    def min_projection(self, dim_num, fig_num = []):
+        '''
+        Get maximum projection image of the 3d data.
+        '''
+        self._figure_maker_(fig_num)
+        
+        img = self._parent.data._data.max(dim_num)
+        plt.imshow(img, cmap = self._cmap)
         
     def render(self):
         '''
@@ -705,14 +772,82 @@ class reconstruct(sino_subclass):
     
     def __init__(self, parent = []):
         self._parent = parent
-      
+    
+    def slice_FDK(self, parameter_value = 0, parameter = 'axis_offset'):
+        '''
+        A quick calculation of a single central slice.
+        Returns a numpy array and not a volume object!
+        '''
+        prnt = self._parent
+        
+        # Extract 1 pixel thin slice:
+        sinogram = prnt.data._data[prnt.data.shape(0)//2, :, :]
+        
+        # For compatibility purposes make sure that the result is 3D:
+        sinogram = numpy.ascontiguousarray(sinogram[None, :])    
+        
+        # Initialize ASTRA:            
+        sz = numpy.array(prnt.data.shape())
+        pixel_size = prnt.meta.geometry['img_pixel']
+        det2obj = prnt.meta.geometry['det2obj']
+        src2obj = prnt.meta.geometry['src2obj']
+        theta = prnt.meta.theta
+        
+        # Temporary change of one of the parameters:      
+        if abs(parameter_value) >0:
+            
+            if parameter == 'axis_offset':
+                # Apply shift:
+                sinogram = interp.shift(sinogram, (0,0, parameter_value))  
+            elif parameter == 'det_pixel':
+                pixel_size = parameter
+                
+            elif parameter == 'det2obj':    
+                det2obj = parameter
+                
+            elif parameter == 'src2obj':   
+                src2obj = parameter
+                
+            else: prnt.error("Can't recognize given parameter.")     
+                
+        sz[0] = 1
+        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
+        
+        # Run the reconstruction:
+        epsilon = numpy.pi / 180.0 # 1 degree
+        
+        short_scan = (theta.max() - theta.min()) < (numpy.pi * 1.99)
+        vol = self._backproject(sinogram, algorithm='FDK_CUDA', short_scan=short_scan)
+            
+        return vol
+        # No need to make a history record - sinogram is not changed.
+        
+    def slice_scan(self, scan_range = numpy.linspace(-10, 10, 11), parameter = 'axis_offset'):
+        '''
+        Create a scan of different rotation axis offsets:
+        '''
+        sz = self._parent.data.shape()
+        
+        print('Starting an', parameter, ' scan.')
+        
+        # Create a volume to put a scan into:
+        vol = numpy.zeros([scan_range.shape[0], sz[2], sz[2]])
+        
+        for ii in scan_range:
+            print(ii)
+            
+            img = self.slice_FDK(ii, parameter)
+            vol[ii, :, :] = img
+
+        return volume(vol)
+    
     def FDK(self):
         
         prnt = self._parent
         
         # Initialize ASTRA:            
         sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
+        pixel_size = prnt.meta.geometry['img_pixel']
         det2obj = prnt.meta.geometry['det2obj']
         src2obj = prnt.meta.geometry['src2obj']
         theta = prnt.meta.theta
@@ -720,7 +855,9 @@ class reconstruct(sino_subclass):
         self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
         
         # Run the reconstruction:
-        epsilon = numpy.pi / 180.0 # 1 degree
+        #epsilon = numpy.pi / 180.0 # 1 degree - I deleted a part of code here by accident...
+        short_scan = (theta.max() - theta.min()) < (numpy.pi * 1.99)
+            
         vol = self._backproject(prnt.data._data, algorithm='FDK_CUDA', short_scan=short_scan)
             
         return volume(vol)
@@ -732,7 +869,7 @@ class reconstruct(sino_subclass):
         
         # Initialize ASTRA:            
         sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
+        pixel_size = prnt.meta.geometry['img_pixel']
         det2obj = prnt.meta.geometry['det2obj']
         src2obj = prnt.meta.geometry['src2obj']
         theta = prnt.meta.theta
@@ -751,7 +888,7 @@ class reconstruct(sino_subclass):
         
         # Initialize ASTRA:            
         sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
+        pixel_size = prnt.meta.geometry['img_pixel']
         det2obj = prnt.meta.geometry['det2obj']
         src2obj = prnt.meta.geometry['src2obj']
         theta = prnt.meta.theta
@@ -784,7 +921,7 @@ class reconstruct(sino_subclass):
         
         # Initialize ASTRA:            
         sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
+        pixel_size = prnt.meta.geometry['img_pixel']
         det2obj = prnt.meta.geometry['det2obj']
         src2obj = prnt.meta.geometry['src2obj']
         theta = prnt.meta.theta
@@ -826,7 +963,7 @@ class reconstruct(sino_subclass):
         
         # Initialize ASTRA:            
         sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
+        pixel_size = prnt.meta.geometry['img_pixel']
         det2obj = prnt.meta.geometry['det2obj']
         src2obj = prnt.meta.geometry['src2obj']
         theta = prnt.meta.theta
@@ -876,7 +1013,6 @@ class reconstruct(sino_subclass):
       #print(cfg['option'])
       alg_id = astra.algorithm.create(cfg)
 
-      print('sinogram shape: ', y.shape)
       #astra.data3d.store(self.sinogram_id, y)
       astra.algorithm.run(alg_id, iterations)
       
@@ -918,6 +1054,7 @@ class data(sino_subclass):
     '''
     _data = []  
     _ref = []
+    _backup = []
 
     _isgpu = False
 
