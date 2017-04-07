@@ -152,7 +152,7 @@ class io(sino_subclass):
         # Find the file with the minimum index:
         filename = sorted([x for x in os.listdir(path) if filename[:-8] in x])[0]
         
-        # If it's a tiff, use dxchange to read tiff:         
+        # If it's a tiff, use dxchange to read tiff:
         if ((filename[-4:] == 'tiff') | (filename[-3:] == 'tif')):
             
             print('Reading a tiff stack')
@@ -173,7 +173,7 @@ class io(sino_subclass):
          
         # Transpose to satisfy ASTRA dimensions:
         self._parent.data._data = numpy.transpose(self._parent.data._data, (1, 0, 2)) 
-        self._parent.data._data = numpy.ascontiguousarray(self._parent.data._data, dtype=numpy.float32)
+        #self._parent.data._data = numpy.ascontiguousarray(self._parent.data._data, dtype=numpy.float32)
         
         # Cast to float to avoid problems with divisions in the future:
        # self._parent.data._data = numpy.float32(self._parent.data._data, copy=False)
@@ -721,6 +721,7 @@ class reconstruct(sino_subclass):
         
         # Run the reconstruction:
         epsilon = numpy.pi / 180.0 # 1 degree
+        short_scan = numpy.abs(prnt.meta.theta[-1] - 2*numpy.pi) > epsilon
         vol = self._backproject(prnt.data._data, algorithm='FDK_CUDA', short_scan=short_scan)
             
         return volume(vol)
@@ -907,7 +908,42 @@ class reconstruct(sino_subclass):
       astra.algorithm.delete(alg_id)
       
       return output
-  
+
+
+    def get_proj_ROI(self, rows=[0,512], cols=[0,512], algorithm='FP3D_CUDA'):
+        # Computes a mask of minimal projection ROI needed to reconstruct a ROI for FDK
+        prnt = self._parent
+        
+        # Initialize ASTRA:            
+        sz = prnt.data.shape()
+        pixel_size = prnt.meta.geometry['det_pixel']
+        det2obj = prnt.meta.geometry['det2obj']
+        src2obj = prnt.meta.geometry['src2obj']
+        theta = prnt.meta.theta
+        
+        
+        roi = numpy.zeros((sz[0],sz[2], sz[2]), dtype=numpy.float32)
+        roi[rows[0]:rows[1],cols[0]:cols[1],cols[0]:cols[1]] = 1.0
+        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
+        
+        
+        mask = self._forwardproject(roi, algorithm=algorithm)
+        
+        # TODO: Compute the bounds of the minimal non-zero rectangle
+        '''
+        mask[mask>0]=1.0
+        bounds = [[0,0],[0,0]]
+        bounds[0][0] = numpy.min(numpy.argmax(numpy.argmax(mask,axis=2),axis=1))
+        for row in range(mask.shape[0],-1,-1))
+        bounds[0][1] = numpy.argmin(mask,axis=0)
+        bounds[1][0] = numpy.argmax(mask,axis=2)
+        bounds[1][1] = numpy.argmin(mask,axis=2)
+        
+        print(bounds)
+        '''
+        return mask
+        
+        
 
 # **************************************************************
 #           DATA class and subclasses
