@@ -32,7 +32,7 @@ import time
 #           Parent class for all sinogram subclasses:
 # ************************************************************** 
  
-class sino_subclass(object):
+class subclass(object):
     def __init__(self, parent):
         self._parent = parent
 
@@ -118,7 +118,7 @@ def extract_2d_array(dimension, index, data):
     else:
         return data[:, :, index]
 
-class io(sino_subclass):
+class io(subclass):
     '''
     Static class for loading / saving the data
     '''   
@@ -412,7 +412,7 @@ class io(sino_subclass):
 #           META class and subclasses
 # **************************************************************
         
-class meta(sino_subclass):
+class meta(subclass):
     '''
     This object contains various properties of the imaging system and the history of pre-processing.
     '''         
@@ -425,7 +425,7 @@ class meta(sino_subclass):
 # **************************************************************
 #           DISPLAY class and subclasses
 # **************************************************************
-class display(sino_subclass):   
+class display(subclass):   
     '''
     This is a collection of display tools for the raw and reconstructed data
     '''  
@@ -509,7 +509,7 @@ class display(sino_subclass):
 # **************************************************************
 #           ANALYSE class and subclasses
 # **************************************************************
-class analyse(sino_subclass):   
+class analyse(subclass):   
     '''
     This is an anlysis toolbox for the raw and reconstructed data
     '''
@@ -541,6 +541,11 @@ class analyse(sino_subclass):
 
         return a, b   
         
+    def threshold(self, threshold = None):
+        '''
+        Apply simple segmentation
+        '''
+        
 # **************************************************************
 #           PROCESS class and subclasses
 # **************************************************************
@@ -552,7 +557,7 @@ from scipy import ndimage
 from tomopy.recon import rotation
 import scipy.ndimage.interpolation as interp
 
-class process(sino_subclass):   
+class process(subclass):   
     '''
     Various preprocessing routines
     '''
@@ -669,6 +674,10 @@ class process(sino_subclass):
         '''
         Apply -log(x) to the sinogram
         '''
+        # Check if the log was already applied:
+        self._parent._check_double_hist('process.log(upper_bound)')
+            
+        # If not, apply!
         self._parent.data._data = -numpy.log(self._parent.data._data / air_intensity)
         
         # Apply a bound to large values:
@@ -761,7 +770,7 @@ class process(sino_subclass):
 # **************************************************************
 import astra
 
-class reconstruct(sino_subclass):   
+class reconstruct(subclass):   
     '''
     Reconstruction algorithms: FDK, SIRT, KL, FISTA etc.
     '''
@@ -770,9 +779,9 @@ class reconstruct(sino_subclass):
     rec_id = []
     sinogram_id = []
     
-    def __init__(self, parent = []):
-        self._parent = parent
-    
+    def __init__(self, sino = []):
+        self._parent = sino
+        
     def slice_FDK(self, parameter_value = 0, parameter = 'axis_offset'):
         '''
         A quick calculation of a single central slice.
@@ -846,16 +855,11 @@ class reconstruct(sino_subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['img_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
+        self._initialize_astra()
         
         # Run the reconstruction:
         #epsilon = numpy.pi / 180.0 # 1 degree - I deleted a part of code here by accident...
+        theta = self._parent.meta.theta  
         short_scan = (theta.max() - theta.min()) < (numpy.pi * 1.99)
             
         vol = self._backproject(prnt.data._data, algorithm='FDK_CUDA', short_scan=short_scan)
@@ -868,13 +872,7 @@ class reconstruct(sino_subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['img_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
+        self._initialize_astra()
         
         # Run the reconstruction:
         vol = self._backproject(prnt.data._data, algorithm = 'SIRT3D_CUDA', iterations = iterations, min_constraint= min_constraint)
@@ -887,13 +885,7 @@ class reconstruct(sino_subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['img_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
+        self._initialize_astra()
         
         # Create a volume containing only ones for forward projection weights
         vol_ones = numpy.ones((sz[0], sz[2], sz[2]), dtype=numpy.float32)
@@ -920,13 +912,7 @@ class reconstruct(sino_subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['img_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
+        self._initialize_astra()
         
         # Create a volume containing only ones for forward projection weights
         vol_ones = numpy.ones((sz[0], sz[2], sz[2]), dtype=numpy.float32)
@@ -962,13 +948,7 @@ class reconstruct(sino_subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['img_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
+        self._initialize_astra()
         
         # Run the reconstruction:
         vol = self._backproject(prnt.data._data, algorithm = 'CGLS3D_CUDA', iterations = iterations, min_constraint=min_constraint)
@@ -977,8 +957,14 @@ class reconstruct(sino_subclass):
         return volume(vol)
         # No need to make a history record - sinogram is not changed.
         
-        
-    def _initialize_astra(self, sz, pixel_size, det2obj, src2obj, theta):
+    def _initialize_astra(self, sz = None, pixel_size = None, 
+                          det2obj = None, src2obj = None, theta = None):        
+    
+        if sz == None: sz = self._parent.data.shape()
+        if pixel_size == None: pixel_size = self._parent.meta.geometry['img_pixel']
+        if det2obj == None: det2obj = self._parent.meta.geometry['det2obj']
+        if src2obj == None: src2obj = self._parent.meta.geometry['src2obj']
+        if theta == None: theta = self._parent.meta.theta  
         
         # Initialize ASTRA (3D): 
         det_count_x = sz[2]
@@ -1048,7 +1034,7 @@ class reconstruct(sino_subclass):
 # **************************************************************
 #           DATA class and subclasses
 # **************************************************************
-class data(sino_subclass):   
+class data(subclass):   
     '''
     Memory allocation, reading and writing the data
     '''
@@ -1082,19 +1068,53 @@ class data(sino_subclass):
             return self._data.shape[dim]
             
 # **************************************************************
-#           VOLUME class
+#           VOLUME class and subclasses
 # ************************************************************** 
+from scipy import ndimage
+from skimage import morphology
+    
+class postprocess(subclass):
+    '''
+    Includes postprocessing of the reconstructed volume.
+    '''
+    
+    def treshold(self, volume, threshold = None):
+    
+        if threshold == None: threshold = volume.analyse.max() / 2
+    
+        volume.data.set_data((volume.data.get_data() > threshold) * 1.0)
+    
+    def measure_thickness(self, volume, obj_intensity = None):
+        '''
+        Measure average thickness of an object.
+        '''
+        
+        # Apply threshold:
+        self.treshold(volume, obj_intensity)
+            
+        # Skeletonize:
+        skeleton = morphology.skeletonize(volume.data.get_data())  
+                
+        # Compute distance across the wall:
+        distance = ndimage.distance_transform_bf(volume.data.get_data()) * 2 
+    
+        # Average distance:
+        return numpy.mean(distance[skeleton])
+    
 class volume(object):
     data = []
     io = []
     analyse = []
     display = []
+    meta = []
+    postprocess = []
 
     def __init__(self, vol):
         self.io = io(self) 
         self.display = display(self)
         self.analyse = analyse(self)
         self.data = data(self)    
+        postprocess = postprocess(self)
         
         # Get the data in:
         self.data._data = vol
@@ -1122,8 +1142,16 @@ attachment to the fruits. Be even-tempered [underlined by one of the \
 cal-ligraphers] in success and failure; for it is this evenness of temper which is meant by yoga.', 
 'God instructs the heart, not by ideas but by pains and contradictions.',
 'Sir, we ought to teach the people that they are doing wrong in worshipping\
-the images and pictures in the temple.']
+the images and pictures in the temple.',
+'Hard work beats talent.', 'It will never be perfect. Make it work!',
+'Although, many of us fear death, I think there is something illogical about it.', 
+'I have nothing but respect for you -- and not much of that.', 
+'Prediction is very difficult, especially about the future.', 
+'You rely too much on brain. The brain is the most overrated organ.',
+'A First Sign of the Beginning of Understanding is the Wish to Die.']
 
+import random
+   
 class sinogram(object):
     '''
     
@@ -1138,7 +1166,10 @@ class sinogram(object):
     analyse = []
     process = []
     reconstruction = []
-    data = []  
+    data = [] 
+
+    # Private:
+    _wisdom_status = 1    
 
     def __init__(self):
         self.io = io(self) 
@@ -1173,20 +1204,55 @@ class sinogram(object):
         
     def what_to_do(self):
         
-        finished = True
-        
-        for k in _min_history:  
-            print((k in meta.history.keys()))
-            if ~(k in meta.history.keys()):
-                print('You should use ', k, 'as a next step')
-                finished = False
-                break
-                
-        if finished:        
-            print('All basic processing steps were done. Use "reconstruct.FDK" to compute filtered backprojection.')
+        if ~self._pronounce_wisdom():
+            self._check_min_hist_keys()
                 
     def copy(self):
         '''
         Deep copy of the sinogram object:
         '''
         return copy.deepcopy(self)
+        
+    def _pronounce_wisdom(self):
+    
+        randomator = 0
+        # Beef up the randomator:
+        for ii in range(0, self._wisdom_status):
+            randomator += numpy.random.randint(0, 100)
+    
+        # If randomator is small, utter a wisdom!    
+        if (randomator < 20):
+           self._wisdom_status += 1
+              
+           # Pick one wisdom:
+           l = numpy.size(_wisdoms)
+           self.message(_wisdoms[numpy.random.randint(0, l)])
+                    
+           return 1
+                    
+        return 0    
+
+    def _check_min_hist_keys(self):
+        '''
+        Check the history and tell the user which operation should be used next.
+        '''
+        finished = True
+        
+        for k in _min_history:  
+            self.message((k in self.meta.history.keys()))
+            
+            if ~(k in self.meta.history.keys()):
+                self.message('You should use ' + k + ' as a next step')
+                finished = False
+                break
+                    
+            if finished:        
+                self.message('All basic processing steps were done. Use "reconstruct.FDK" to compute filtered backprojection.')
+                
+    def _check_double_hist(self, new_key):
+        '''
+        Check if the operation was already done
+        '''
+        if new_key in self.meta.history.keys():
+            self.error(new_key + ' is found in the history of operations! Aborting.')
+        
