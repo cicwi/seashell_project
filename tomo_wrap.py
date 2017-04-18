@@ -858,17 +858,7 @@ class reconstruct(subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-<<<<<<< HEAD
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
-=======
         self._initialize_astra()
->>>>>>> 4adb56fa9d3efcb124ab2219a7ba6b0e595d30cf
         
         # Run the reconstruction:
         #epsilon = numpy.pi / 180.0 # 1 degree - I deleted a part of code here by accident...
@@ -884,17 +874,7 @@ class reconstruct(subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-<<<<<<< HEAD
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
-=======
         self._initialize_astra()
->>>>>>> 4adb56fa9d3efcb124ab2219a7ba6b0e595d30cf
         
         # Run the reconstruction:
         vol = self._backproject(prnt.data._data, algorithm = 'SIRT3D_CUDA', iterations = iterations, min_constraint= min_constraint)
@@ -907,17 +887,7 @@ class reconstruct(subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-<<<<<<< HEAD
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
-=======
         self._initialize_astra()
->>>>>>> 4adb56fa9d3efcb124ab2219a7ba6b0e595d30cf
         
         # Create a volume containing only ones for forward projection weights
         vol_ones = numpy.ones((sz[0], sz[2], sz[2]), dtype=numpy.float32)
@@ -944,17 +914,7 @@ class reconstruct(subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-<<<<<<< HEAD
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.thetaimg
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
-=======
         self._initialize_astra()
->>>>>>> 4adb56fa9d3efcb124ab2219a7ba6b0e595d30cf
         
         # Create a volume containing only ones for forward projection weights
         vol_ones = numpy.ones((sz[0], sz[2], sz[2]), dtype=numpy.float32)
@@ -990,17 +950,7 @@ class reconstruct(subclass):
         prnt = self._parent
         
         # Initialize ASTRA:            
-<<<<<<< HEAD
-        sz = prnt.data.shape()
-        pixel_size = prnt.meta.geometry['det_pixel']
-        det2obj = prnt.meta.geometry['det2obj']
-        src2obj = prnt.meta.geometry['src2obj']
-        theta = prnt.meta.theta
-        
-        self._initialize_astra(sz, pixel_size, det2obj, src2obj, theta)
-=======
         self._initialize_astra()
->>>>>>> 4adb56fa9d3efcb124ab2219a7ba6b0e595d30cf
         
         # Run the reconstruction:
         vol = self._backproject(prnt.data._data, algorithm = 'CGLS3D_CUDA', iterations = iterations, min_constraint=min_constraint)
@@ -1009,19 +959,15 @@ class reconstruct(subclass):
         return volume(vol)
         # No need to make a history record - sinogram is not changed.
         
-<<<<<<< HEAD
-        
-    def _initialize_astra(self, sz, det_pixel_size, det2obj, src2obj, theta):
-=======
+
     def _initialize_astra(self, sz = None, pixel_size = None, 
                           det2obj = None, src2obj = None, theta = None):        
     
         if sz == None: sz = self._parent.data.shape()
-        if pixel_size == None: pixel_size = self._parent.meta.geometry['img_pixel']
+        if pixel_size == None: pixel_size = self._parent.meta.geometry['det_pixel']
         if det2obj == None: det2obj = self._parent.meta.geometry['det2obj']
         if src2obj == None: src2obj = self._parent.meta.geometry['src2obj']
         if theta == None: theta = self._parent.meta.theta  
->>>>>>> 4adb56fa9d3efcb124ab2219a7ba6b0e595d30cf
         
         # Initialize ASTRA (3D): 
         det_count_x = sz[2]
@@ -1037,7 +983,7 @@ class reconstruct(subclass):
               
         self.vol_geom = astra.create_vol_geom(vol_count_x, vol_count_x, vol_count_z)
         self.proj_geom = astra.create_proj_geom('cone', magnification, magnification, det_count_z, det_count_x, 
-                                           theta, (src2obj*magnification)/det_pixel_size, (det2obj*magnification)/det_pixel_size)
+                                           theta, (src2obj*magnification)/pixel_size, (det2obj*magnification)/pixel_size)
 
      
     def _backproject(self, y, algorithm = 'FDK_CUDA', iterations=1, min_constraint = None, short_scan=False):
