@@ -168,7 +168,7 @@ class io(subclass):
             
             print('Reading a tiff stack')
             if self._parent:
-                self._parent.data._data = dxchange.reader.read_tiff_stack(os.path.join(path,filename), range(first, last + 1), digit=5)
+                self._parent.data._data = dxchange.reader.read_tiff_stack(os.path.join(path,filename), range(first, last + 1), digit=1)
             else:
                 return dxchange.reader.read_tiff_stack(os.path.join(path,filename), range(first, last + 1))
         else:
@@ -184,7 +184,7 @@ class io(subclass):
          
         # Transpose to satisfy ASTRA dimensions:
         self._parent.data._data = numpy.transpose(self._parent.data._data, (1, 0, 2)) 
-        #self._parent.data._data = numpy.ascontiguousarray(self._parent.data._data, dtype=numpy.float32)
+        self._parent.data._data = numpy.ascontiguousarray(self._parent.data._data, dtype=numpy.float32)
         
         # Cast to float to avoid problems with divisions in the future:
        # self._parent.data._data = numpy.float32(self._parent.data._data, copy=False)
@@ -864,7 +864,7 @@ class reconstruct(subclass):
         #epsilon = numpy.pi / 180.0 # 1 degree - I deleted a part of code here by accident...
         theta = self._parent.meta.theta  
         short_scan = (theta.max() - theta.min()) < (numpy.pi * 1.99)
-        vol = self._backproject(prnt.data._data, algorithm='FDK_CUDA', short_scan=short_scan)
+        vol = self._backproject(prnt.data._data, algorithm='FDK_CUDA')
             
         return volume(vol)
         # No need to make a history record - sinogram is not changed.
@@ -963,11 +963,11 @@ class reconstruct(subclass):
     def _initialize_astra(self, sz = None, pixel_size = None, 
                           det2obj = None, src2obj = None, theta = None):        
     
-        if sz == None: sz = self._parent.data.shape()
-        if pixel_size == None: pixel_size = self._parent.meta.geometry['det_pixel']
-        if det2obj == None: det2obj = self._parent.meta.geometry['det2obj']
-        if src2obj == None: src2obj = self._parent.meta.geometry['src2obj']
-        if theta == None: theta = self._parent.meta.theta  
+        if sz is None: sz = self._parent.data.shape()
+        if pixel_size is None: pixel_size = self._parent.meta.geometry['det_pixel']
+        if det2obj is None: det2obj = self._parent.meta.geometry['det2obj']
+        if src2obj is None: src2obj = self._parent.meta.geometry['src2obj']
+        if theta is None: theta = self._parent.meta.theta  
         
         # Initialize ASTRA (3D): 
         det_count_x = sz[2]
@@ -1118,7 +1118,7 @@ class postprocess(subclass):
     
     def treshold(self, volume, threshold = None):
     
-        if threshold == None: threshold = volume.analyse.max() / 2
+        if threshold is None: threshold = volume.analyse.max() / 2
     
         volume.data.set_data((volume.data.get_data() > threshold) * 1.0)
     
@@ -1152,7 +1152,7 @@ class volume(object):
         self.display = display(self)
         self.analyse = analyse(self)
         self.data = data(self)    
-        postprocess = postprocess(self)
+        self.postprocess = postprocess(self)
         
         # Get the data in:
         self.data._data = vol
