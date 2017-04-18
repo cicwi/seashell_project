@@ -74,7 +74,7 @@ class spectra():
         thickness /= 1e4 
         
         # Attenuation by the photoelectric effect:
-        spectrum = 1 - numpy.exp(- thikness * rho * spectra.photoelectric(energy, compound))
+        spectrum = 1 - numpy.exp(- thickness * rho * spectra.photoelectric(energy, compound))
             
         # Normalize:
         return spectrum / spectrum.max()
@@ -89,7 +89,7 @@ class spectra():
         thickness /= 1e4 
         
         # Attenuation by the photoelectric effect:
-        return 1 - numpy.exp(- thikness * rho * spectra.total_attenuation(energy, compound))
+        return 1 - numpy.exp(- thickness * rho * spectra.total_attenuation(energy, compound))
     
     @staticmethod 
     def attenuation(energy, compound, rho, thickness):
