@@ -120,7 +120,7 @@ class phantom():
     '''
     
     @staticmethod     
-    def shepp_logan3d(sz = 512):
+    def shepp3d(sz = 512):
         import tomopy.misc
         import tomo_wrap
         

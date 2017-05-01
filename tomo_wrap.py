@@ -71,9 +71,17 @@ def read_image_stack(file):
     # Remove the extention and the last few letters:
     name = os.path.basename(file)[:-8]
     path = os.path.dirname(file)
+    
+    # Get the files that contain a number:
+    files = os.listdir(path)
+    files = [x for x in files if re.findall('\d+', x[-8:])] 
+
+    print('********************')
+    print(files)    
 
     # Get the files that are alike and sort:   
-    files = [os.path.join(path,x) for x in os.listdir(path) if name in x]    
+    files = [os.path.join(path,x) for x in files if name in x]    
+
     #files = sorted(files)         
     files = sort_natural(files)    
     
@@ -86,7 +94,10 @@ def read_image_stack(file):
     # Read all files:       
     ii = 0
     for filename in files:
-        data[ii, :, :] = misc.imread(filename, flatten= 0)
+        a = misc.imread(filename, flatten= 0)
+        if a.ndim > 2:
+          a = a.mean(2)        
+        data[ii, :, :] = a
         ii = ii + 1
 
     print(ii, 'files were loaded.')
@@ -1147,11 +1158,12 @@ class volume(object):
     meta = []
     postprocess = []
 
-    def __init__(self, vol):
+    def __init__(self, vol = []):
         self.io = io(self) 
         self.display = display(self)
         self.analyse = analyse(self)
         self.data = data(self)    
+        self.meta = meta(self)
         self.postprocess = postprocess(self)
         
         # Get the data in:
